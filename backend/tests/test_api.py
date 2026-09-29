@@ -34,7 +34,6 @@ async def test_root_redirect(client: AsyncClient) -> None:
     assert response.headers["location"] == "/api/docs"
 
 
-
 async def test_create_meeting_with_participants(client: AsyncClient) -> None:
     olena = await make_participant(client, "Olena Koval", "olena@example.com")
     taras = await make_participant(client, "Taras Shevchuk", "taras@example.com")
