@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { addDays } from 'date-fns'
 import { LogOutIcon, PlusIcon } from 'lucide-react'
-import { Link } from 'react-router'
-
 import { DateNavigation, ViewSwitcher } from '@/components/calendar-toolbar'
 import { DeleteMeetingDialog } from '@/components/delete-meeting-dialog'
 import { MeetingDetailsDialog } from '@/components/meeting-details-dialog'
@@ -77,14 +75,13 @@ export function HomePage() {
           </Button>
           {user && (
             <div className="flex items-center gap-1">
-              <Link
-                to="/profile"
-                className="flex size-8 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              <span
+                className="flex size-8 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-secondary-foreground"
                 aria-label="Profile"
-                title={`${user.name} · ${user.email}\nEdit profile`}
+                title={`${user.name} · ${user.email}`}
               >
                 {user.name.charAt(0).toUpperCase()}
-              </Link>
+              </span>
               <Button
                 variant="ghost"
                 size="icon-sm"

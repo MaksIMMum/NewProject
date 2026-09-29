@@ -99,9 +99,19 @@ async function withFriendlyErrors<T>(action: () => Promise<T>): Promise<T> {
   }
 }
 
+const LOCAL_DEV_USER: User = {
+  name: 'Demo User',
+  email: 'demo@example.com',
+  provider: 'password',
+}
+
 /** The signed-in user from the (auto-refreshed) ID token, or null. */
 export async function loadUser(): Promise<User | null> {
-  if (!authConfigured) return null
+  if (!authConfigured) {
+    const raw = localStorage.getItem('meetings.local_user')
+    if (raw === 'null') return null
+    return raw ? (JSON.parse(raw) as User) : LOCAL_DEV_USER
+  }
   try {
     const claims = (await fetchAuthSession()).tokens?.idToken?.payload
     if (!claims) return null
@@ -119,7 +129,7 @@ export async function loadUser(): Promise<User | null> {
 
 /** The ID token the API expects (`Authorization: Bearer ...`); Amplify refreshes it. */
 export async function getIdToken(): Promise<string | null> {
-  if (!authConfigured) return null
+  if (!authConfigured) return 'local-dev-token'
   try {
     return (await fetchAuthSession()).tokens?.idToken?.toString() ?? null
   } catch {
@@ -136,6 +146,11 @@ async function reloadUser(): Promise<User | null> {
 export const authApi = {
   login: ({ email, password }: LoginData) =>
     withFriendlyErrors(async () => {
+      if (!authConfigured) {
+        const user: User = { name: email.split('@')[0] || 'Demo User', email, provider: 'password' }
+        localStorage.setItem('meetings.local_user', JSON.stringify(user))
+        return user
+      }
       const { nextStep } = await signIn({ username: email, password })
       if (nextStep.signInStep === 'CONFIRM_SIGN_UP') throw new NeedsConfirmationError(email)
       if (nextStep.signInStep !== 'DONE') throw new Error(`Unsupported sign-in step`)
@@ -144,6 +159,11 @@ export const authApi = {
   /** Creates the account; Cognito emails a code that `confirm` checks. */
   signup: ({ name, email, password }: SignupData) =>
     withFriendlyErrors(async () => {
+      if (!authConfigured) {
+        const user: User = { name, email, provider: 'password' }
+        localStorage.setItem('meetings.local_user', JSON.stringify(user))
+        return { needsConfirmation: false }
+      }
       const { nextStep } = await signUp({
         username: email,
         password,

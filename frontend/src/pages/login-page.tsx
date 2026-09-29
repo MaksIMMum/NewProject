@@ -125,11 +125,7 @@ export function LoginPage() {
           {form.formState.errors.root && (
             <FieldError>{form.formState.errors.root.message}</FieldError>
           )}
-          <Button
-            type="submit"
-            className="mt-1 w-full"
-            disabled={pending || !authConfigured}
-          >
+          <Button type="submit" className="mt-1 w-full" disabled={pending}>
             {login.isPending ? 'Signing in...' : 'Sign in'}
           </Button>
         </FieldGroup>

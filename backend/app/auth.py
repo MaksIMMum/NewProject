@@ -78,13 +78,9 @@ class TokenVerifier:
 
 
 @cache
-def get_verifier() -> TokenVerifier:
+def get_verifier() -> TokenVerifier | None:
     if not settings.cognito_user_pool_id or not settings.cognito_client_id:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Authentication is not configured: set COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID "
-            "(make deploy-auth)",
-        )
+        return None
     return TokenVerifier(
         settings.cognito_user_pool_id, settings.cognito_client_id, settings.cognito_jwks
     )
@@ -101,9 +97,23 @@ def _unauthorized(detail: str) -> HTTPException:
 
 async def get_current_user(
     session: SessionDep,
-    verifier: Annotated[TokenVerifier, Depends(get_verifier)],
+    verifier: Annotated[TokenVerifier | None, Depends(get_verifier)],
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
 ) -> User:
+    if verifier is None:
+        # Local development without Cognito configured: fallback to a demo user
+        demo_sub = "local-dev-user"
+        user = await session.scalar(select(User).where(User.cognito_sub == demo_sub))
+        if user is None:
+            user = User(cognito_sub=demo_sub, email="demo@example.com", name="Demo User")
+            session.add(user)
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                user = await session.scalar(select(User).where(User.cognito_sub == demo_sub))
+        return user
+
     if credentials is None:
         raise _unauthorized("Not authenticated")
     try:

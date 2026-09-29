@@ -98,13 +98,14 @@ export function GoogleButton({
   )
 }
 
-/** Shown instead of working forms when the build has no Cognito ids. */
+/** Shown when running locally before Cognito is configured. */
 export function AuthNotConfigured() {
   return (
-    <Alert variant="destructive">
-      <AlertTitle>Sign-in is not configured</AlertTitle>
+    <Alert>
+      <AlertTitle>Local Development Mode</AlertTitle>
       <AlertDescription>
-        Run <code>make deploy-auth</code>, then rebuild the app (<code>make up</code>).
+        Cognito is not configured. Enter any email and password to test locally. Run{' '}
+        <code>make deploy-auth</code> to enable AWS Cognito.
       </AlertDescription>
     </Alert>
   )
