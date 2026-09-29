@@ -1,0 +1,47 @@
+name: Docker Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-image:
+    name: Build Backend Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          tags: meetings-backend:test
+
+  frontend-image:
+    name: Build Frontend Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          tags: meetings-frontend:test

@@ -1,5 +1,9 @@
 # Meetings App
 
+[![Lint](https://github.com/MaksIMMum/NewProject/actions/workflows/lint.yml/badge.svg)](https://github.com/MaksIMMum/NewProject/actions/workflows/lint.yml)
+[![Tests](https://github.com/MaksIMMum/NewProject/actions/workflows/test.yml/badge.svg)](https://github.com/MaksIMMum/NewProject/actions/workflows/test.yml)
+[![Docker](https://github.com/MaksIMMum/NewProject/actions/workflows/docker.yml/badge.svg)](https://github.com/MaksIMMum/NewProject/actions/workflows/docker.yml)
+
 List, create, and delete meetings with participants. FastAPI + PostgreSQL backend, React + shadcn/ui frontend, all run with Docker Compose. See [SPEC.md](SPEC.md) for the full specification.
 
 ## Quick start
