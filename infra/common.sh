@@ -3,6 +3,7 @@
 : "${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY in .env}"
 : "${AWS_REGION:?Set AWS_REGION in .env}"
 export AWS_DEFAULT_REGION="$AWS_REGION" AWS_PAGER=""
+export PATH="$HOME/.local/bin:$PATH"
 [ -n "${AWS_SESSION_TOKEN:-}" ] || unset AWS_SESSION_TOKEN
 
 # APP_NAME is the old name of the setting and still works.

@@ -48,11 +48,14 @@ main() {
   image="$repository:$TAG"
 
   echo "==> [3/5] Build and push $image"
+  ARCH="${ARCH:-x86_64}"
+  docker_platform="linux/amd64"
+  [ "$ARCH" = "arm64" ] && docker_platform="linux/arm64"
   if aws ecr describe-images --repository-name "$PROJECT_NAME-backend" --image-ids "imageTag=$TAG" >/dev/null 2>&1; then
     echo "    already in ECR, skipping"
   else
     # Lambda accepts only single-platform images without attestation manifests.
-    docker build --platform linux/arm64 --provenance=false --sbom=false --tag "$image" backend
+    docker build --platform "$docker_platform" --tag "$image" backend
     aws ecr get-login-password | docker login --username AWS --password-stdin "${repository%%/*}"
     docker push "$image"
   fi
@@ -81,6 +84,7 @@ main() {
       "CognitoUserPoolId=$pool_id" \
       "CognitoClientId=$client_id" \
       "CognitoJwks=$jwks" \
+      "Architecture=$ARCH" \
     --tags "${STACK_TAGS[@]}" \
     --no-fail-on-empty-changeset
   api_url="$(output "$BACKEND_STACK" ApiUrl)"

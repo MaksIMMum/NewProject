@@ -40,20 +40,6 @@ Parameters:
     Type: Number
     Default: 512
     Description: Lambda memory in MB (CPU scales with it).
-  DBMinCapacity:
-    Type: Number
-    Default: 0
-    Description: Minimum Aurora capacity units; 0 lets the database pause when idle (billed for storage only).
-  DBMaxCapacity:
-    Type: Number
-    Default: 1
-    Description: Maximum Aurora capacity units (1 ACU is about 2 GB of memory).
-  DBAutoPauseSeconds:
-    Type: Number
-    Default: 300
-    MinValue: 300
-    MaxValue: 86400
-    Description: Idle time before the database pauses (only with DBMinCapacity 0).
   DBName:
     Type: String
     Default: meetings
@@ -62,9 +48,20 @@ Parameters:
     Type: String
     Default: meetings
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_]*"
+  Architecture:
+    Type: String
+    Default: x86_64
+    AllowedValues: [x86_64, arm64]
+    Description: Lambda execution architecture (x86_64 or arm64).
+
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks: [W1011]
 
 Resources:
   # ---------------------------------------------------------------- Network
+
   # Private subnets only: the function talks to nothing but the database.
   Vpc:
     Type: AWS::EC2::VPC
@@ -138,49 +135,26 @@ Resources:
           Value: !Ref ProjectName
 
   Database:
-    Type: AWS::RDS::DBCluster
-    Metadata:
-      # cfn-lint's version list lags behind RDS; 17.11 is available (describe-db-engine-versions).
-      cfn-lint:
-        config:
-          ignore_checks: [E3690]
+    Type: AWS::RDS::DBInstance
     DeletionPolicy: Snapshot
     UpdateReplacePolicy: Snapshot
     Properties:
-      DBClusterIdentifier: !Sub ${ProjectName}-db
-      Engine: aurora-postgresql
+      DBInstanceIdentifier: !Sub ${ProjectName}-db
+      Engine: postgres
       EngineVersion: "17.11"
-      # Serverless v2: scales between the capacities below; at 0 ACU it pauses when idle
-      # and resumes (in about 15 seconds) on the next connection.
-      ServerlessV2ScalingConfiguration:
-        MinCapacity: !Ref DBMinCapacity
-        MaxCapacity: !Ref DBMaxCapacity
-        SecondsUntilAutoPause: !Ref DBAutoPauseSeconds
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: "20"
+      StorageType: gp3
       StorageEncrypted: true
-      DatabaseName: !Ref DBName
+      DBName: !Ref DBName
       MasterUsername: !Ref DBUser
-      # SecureString created by infra/deploy-backend.sh (CloudFormation cannot create one).
-      MasterUserPassword: !Sub "{{resolve:ssm-secure:/${ProjectName}/db-password}}"
+      MasterUserPassword: !Ref DBPassword
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
-      VpcSecurityGroupIds: [!Ref DatabaseSecurityGroup]
-      BackupRetentionPeriod: 1
-      # Snapshots (including the final one on delete) keep the PROJECT_NAME tag.
-      CopyTagsToSnapshot: true
-      Tags:
-        - Key: PROJECT_NAME
-          Value: !Ref ProjectName
-
-  # A single serverless writer; the cluster's final snapshot covers the data on delete.
-  DatabaseInstance:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBInstanceIdentifier: !Sub ${ProjectName}-db-1
-      DBClusterIdentifier: !Ref Database
-      Engine: aurora-postgresql
-      DBInstanceClass: db.serverless
+      VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
       PubliclyAccessible: false
-      EnablePerformanceInsights: false
       AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 1
+      CopyTagsToSnapshot: true
       Tags:
         - Key: PROJECT_NAME
           Value: !Ref ProjectName
@@ -213,14 +187,12 @@ Resources:
 
   Function:
     Type: AWS::Lambda::Function
-    # The cluster endpoint only accepts connections once its instance exists.
-    DependsOn: DatabaseInstance
     Properties:
       FunctionName: !Sub ${ProjectName}-backend
       PackageType: Image
       Code:
         ImageUri: !Ref ImageUri
-      Architectures: [arm64]
+      Architectures: [!Ref Architecture]
       MemorySize: !Ref MemorySize
       # Covers a cold start: resuming a paused database + migrations check + app startup.
       Timeout: 60
