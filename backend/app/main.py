@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 
 from app.auth import get_current_user
@@ -35,3 +36,9 @@ api.include_router(me.router)
 api.include_router(meetings.router)
 api.include_router(participants.router, dependencies=[Depends(get_current_user)])
 app.include_router(api)
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/api", include_in_schema=False)
+async def root() -> RedirectResponse:
+    return RedirectResponse(url="/api/docs")
