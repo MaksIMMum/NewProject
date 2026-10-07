@@ -7,3 +7,5 @@ node_modules/
 dist/
 .idea/
 .DS_Store
+.agents/
+TEST_READY.md

@@ -35,6 +35,9 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       UserPoolName: !Sub ${ProjectName}-users
+      UserPoolTier: ESSENTIALS
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
       # Users sign in with their email; Cognito emails a code to verify it.
       UsernameAttributes: [email]
       AutoVerifiedAttributes: [email]
@@ -81,6 +84,7 @@ Resources:
     Properties:
       UserPoolId: !Ref UserPool
       Domain: !Sub ${ProjectName}-${AWS::AccountId}
+      ManagedLoginVersion: 2
 
   GoogleIdentityProvider:
     Type: AWS::Cognito::UserPoolIdentityProvider
@@ -123,13 +127,27 @@ Resources:
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid, email, profile]
-      # "<origin>/login" for every origin: join with "/login," and append the last "/login".
+      # Both base origins and <origin>/login for every origin to support root and /login redirects.
       CallbackURLs: !Split
         - ","
-        - !Join ["", [!Join ["/login,", !Ref AppUrls], "/login"]]
+        - !Join
+          - ","
+          - - !Join [",", !Ref AppUrls]
+            - !Join ["", [!Join ["/login,", !Ref AppUrls], "/login"]]
       LogoutURLs: !Split
         - ","
-        - !Join ["", [!Join ["/login,", !Ref AppUrls], "/login"]]
+        - !Join
+          - ","
+          - - !Join [",", !Ref AppUrls]
+            - !Join ["", [!Join ["/login,", !Ref AppUrls], "/login"]]
+
+  ManagedLoginBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    DependsOn: UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientId: !Ref UserPoolClient
+      UseCognitoProvidedValues: true
 
 Outputs:
   Region:

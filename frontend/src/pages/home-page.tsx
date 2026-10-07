@@ -74,7 +74,7 @@ export function HomePage() {
             <span className="max-sm:hidden">Add meeting</span>
           </Button>
           {user && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <span
                 className="flex size-8 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-secondary-foreground"
                 aria-label="Profile"
@@ -82,14 +82,10 @@ export function HomePage() {
               >
                 {user.name.charAt(0).toUpperCase()}
               </span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Sign out"
-                title="Sign out"
-                onClick={signOut}
-              >
+              <span className="text-sm font-medium text-foreground">{user.email}</span>
+              <Button variant="outline" size="sm" aria-label="Sign out" onClick={signOut}>
                 <LogOutIcon />
+                Sign out
               </Button>
             </div>
           )}

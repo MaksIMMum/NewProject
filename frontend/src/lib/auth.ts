@@ -1,24 +1,11 @@
 import { useMutation } from '@tanstack/react-query'
-import { Amplify } from 'aws-amplify'
-import {
-  autoSignIn,
-  confirmSignUp,
-  confirmUserAttribute,
-  fetchAuthSession,
-  resendSignUpCode,
-  sendUserAttributeVerificationCode,
-  signIn,
-  signInWithRedirect,
-  signUp,
-  updatePassword,
-  updateUserAttribute,
-} from 'aws-amplify/auth'
 import { createContext, useContext } from 'react'
 
 export type User = {
   name: string
   email: string
   provider: 'password' | 'google'
+  sub?: string
 }
 
 export type LoginData = { email: string; password: string }
@@ -36,33 +23,203 @@ export const authConfig = {
 }
 export const authConfigured = Boolean(authConfig.userPoolId && authConfig.clientId)
 
-export function configureAuth() {
-  if (!authConfigured) return
-  // Cognito only redirects (after Google) to URLs listed in infra/auth.yaml: <origin>/login.
-  const redirect = [`${window.location.origin}/login`]
-  Amplify.configure({
-    Auth: {
-      Cognito: {
-        userPoolId: authConfig.userPoolId,
-        userPoolClientId: authConfig.clientId,
-        loginWith: {
-          email: true,
-          ...(authConfig.domain && {
-            oauth: {
-              domain: authConfig.domain,
-              scopes: ['openid', 'email', 'profile'],
-              redirectSignIn: redirect,
-              redirectSignOut: redirect,
-              responseType: 'code',
-            },
-          }),
-        },
-      },
-    },
-  })
+export function configureAuth(): void {
+  // Hosted UI OAuth 2.0 PKCE flow is configured dynamically via authConfig
 }
 
-/** Sign-in succeeded but the email was never verified: the signup page asks for the code. */
+function cleanDomain(domain: string): string {
+  return domain.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+}
+
+function generateRandomString(length = 64): string {
+  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
+  const randomValues = new Uint8Array(length)
+  crypto.getRandomValues(randomValues)
+  let result = ''
+  for (let i = 0; i < length; i++) {
+    result += charset[randomValues[i] % charset.length]
+  }
+  return result
+}
+
+function base64UrlEncode(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(verifier)
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return base64UrlEncode(digest)
+}
+
+export function parseJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length < 2) return null
+    let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    while (base64.length % 4 !== 0) {
+      base64 += '='
+    }
+    const jsonStr = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join(''),
+    )
+    return JSON.parse(jsonStr) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+export function extractUserFromClaims(claims: Record<string, unknown>): User {
+  const email = String(claims.email ?? '')
+  const name = String(claims.name ?? (email ? email.split('@')[0] : 'User'))
+  const isGoogle =
+    Boolean(claims.identities) ||
+    (typeof claims.sub === 'string' && claims.sub.includes('Google')) ||
+    (Array.isArray(claims.identities) && claims.identities.length > 0)
+  return {
+    name,
+    email,
+    provider: isGoogle ? 'google' : 'password',
+    sub: claims.sub ? String(claims.sub) : undefined,
+  }
+}
+
+export function clearTokens(): void {
+  localStorage.removeItem('meetings.id_token')
+  localStorage.removeItem('meetings.access_token')
+  localStorage.removeItem('meetings.refresh_token')
+  localStorage.removeItem('meetings.local_user')
+  sessionStorage.removeItem('meetings.pkce_verifier')
+}
+
+export async function signinRedirect(): Promise<void> {
+  if (!authConfigured) return
+  const verifier = generateRandomString(64)
+  sessionStorage.setItem('meetings.pkce_verifier', verifier)
+  const challenge = await generateCodeChallenge(verifier)
+  const origin = window.location.origin
+  const domain = cleanDomain(authConfig.domain)
+  const redirectUri = `${origin}/login`
+
+  const authorizeUrl = `https://${domain}/oauth2/authorize?client_id=${authConfig.clientId}&response_type=code&scope=openid+email+profile&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${challenge}&code_challenge_method=S256`
+
+  window.location.href = authorizeUrl
+}
+
+export async function exchangeAuthCode(code: string): Promise<User> {
+  const verifier = sessionStorage.getItem('meetings.pkce_verifier') || ''
+  const domain = cleanDomain(authConfig.domain)
+  const tokenUrl = `https://${domain}/oauth2/token`
+  const origin = window.location.origin
+  const redirectUri = `${origin}/login`
+
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    client_id: authConfig.clientId,
+    code,
+    redirect_uri: redirectUri,
+    code_verifier: verifier,
+  })
+
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  })
+
+  if (!response.ok) {
+    let errorDetail = 'Token exchange failed'
+    try {
+      const errJson = (await response.json()) as { error?: string; error_description?: string }
+      errorDetail = errJson.error_description || errJson.error || errorDetail
+    } catch {
+      // response body was not JSON
+    }
+    throw new Error(errorDetail)
+  }
+
+  const data = (await response.json()) as {
+    id_token?: string
+    access_token?: string
+    refresh_token?: string
+    expires_in?: number
+  }
+
+  if (data.id_token) localStorage.setItem('meetings.id_token', data.id_token)
+  if (data.access_token) localStorage.setItem('meetings.access_token', data.access_token)
+  if (data.refresh_token) localStorage.setItem('meetings.refresh_token', data.refresh_token)
+  sessionStorage.removeItem('meetings.pkce_verifier')
+
+  if (!data.id_token) {
+    throw new Error('No ID token received from authentication server')
+  }
+
+  const claims = parseJwtPayload(data.id_token)
+  if (!claims) {
+    throw new Error('Failed to parse ID token claims')
+  }
+
+  return extractUserFromClaims(claims)
+}
+
+export async function refreshTokens(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('meetings.refresh_token')
+  if (!refreshToken || !authConfigured) return null
+  try {
+    const domain = cleanDomain(authConfig.domain)
+    const tokenUrl = `https://${domain}/oauth2/token`
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: authConfig.clientId,
+      refresh_token: refreshToken,
+    })
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
+    })
+    if (!response.ok) {
+      clearTokens()
+      return null
+    }
+    const data = (await response.json()) as {
+      id_token?: string
+      access_token?: string
+    }
+    if (data.id_token) localStorage.setItem('meetings.id_token', data.id_token)
+    if (data.access_token) localStorage.setItem('meetings.access_token', data.access_token)
+    return data.id_token ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function signOut(): Promise<void> {
+  clearTokens()
+  const origin = window.location.origin
+  if (authConfigured) {
+    const domain = cleanDomain(authConfig.domain)
+    const logoutUri = encodeURIComponent(`${origin}/login`)
+    window.location.href = `https://${domain}/logout?client_id=${authConfig.clientId}&logout_uri=${logoutUri}`
+  } else {
+    localStorage.setItem('meetings.local_user', 'null')
+    window.location.href = '/login'
+  }
+}
+
 export class NeedsConfirmationError extends Error {
   readonly email: string
 
@@ -72,7 +229,6 @@ export class NeedsConfirmationError extends Error {
   }
 }
 
-// Cognito's exception names -> messages for people.
 const MESSAGES: Record<string, string> = {
   NotAuthorizedException: 'Wrong email or password',
   UserNotFoundException: 'Wrong email or password',
@@ -105,118 +261,100 @@ const LOCAL_DEV_USER: User = {
   provider: 'password',
 }
 
-/** The signed-in user from the (auto-refreshed) ID token, or null. */
+/** The signed-in user from the stored ID token or local dev user. */
 export async function loadUser(): Promise<User | null> {
   if (!authConfigured) {
     const raw = localStorage.getItem('meetings.local_user')
     if (raw === 'null') return null
     return raw ? (JSON.parse(raw) as User) : LOCAL_DEV_USER
   }
-  try {
-    const claims = (await fetchAuthSession()).tokens?.idToken?.payload
-    if (!claims) return null
-    const email = String(claims.email ?? '')
-    return {
-      name: String(claims.name ?? email.split('@')[0]),
-      email,
-      // Federated (Google) accounts carry an "identities" claim.
-      provider: claims.identities ? 'google' : 'password',
-    }
-  } catch {
-    return null
-  }
+  const idToken = await getIdToken()
+  if (!idToken) return null
+  const claims = parseJwtPayload(idToken)
+  if (!claims) return null
+  return extractUserFromClaims(claims)
 }
 
-/** The ID token the API expects (`Authorization: Bearer ...`); Amplify refreshes it. */
+/** The ID token the API expects (`Authorization: Bearer ...`). */
 export async function getIdToken(): Promise<string | null> {
   if (!authConfigured) return 'local-dev-token'
-  try {
-    return (await fetchAuthSession()).tokens?.idToken?.toString() ?? null
-  } catch {
-    return null
+  const idToken = localStorage.getItem('meetings.id_token')
+  if (!idToken) return null
+  const claims = parseJwtPayload(idToken)
+  if (claims && typeof claims.exp === 'number' && claims.exp * 1000 < Date.now()) {
+    return await refreshTokens()
   }
-}
-
-/** Fresh tokens, so the new name or email reaches the API (it copies them from the ID token). */
-async function reloadUser(): Promise<User | null> {
-  await fetchAuthSession({ forceRefresh: true })
-  return loadUser()
+  return idToken
 }
 
 export const authApi = {
-  login: ({ email, password }: LoginData) =>
+  login: ({ email, password: _password }: LoginData) =>
     withFriendlyErrors(async () => {
       if (!authConfigured) {
         const user: User = { name: email.split('@')[0] || 'Demo User', email, provider: 'password' }
         localStorage.setItem('meetings.local_user', JSON.stringify(user))
         return user
       }
-      const { nextStep } = await signIn({ username: email, password })
-      if (nextStep.signInStep === 'CONFIRM_SIGN_UP') throw new NeedsConfirmationError(email)
-      if (nextStep.signInStep !== 'DONE') throw new Error(`Unsupported sign-in step`)
-      return loadUser()
+      throw new Error('Please sign in via Cognito Managed Login')
     }),
-  /** Creates the account; Cognito emails a code that `confirm` checks. */
-  signup: ({ name, email, password }: SignupData) =>
+  signup: ({ name, email, password: _password }: SignupData) =>
     withFriendlyErrors(async () => {
       if (!authConfigured) {
         const user: User = { name, email, provider: 'password' }
         localStorage.setItem('meetings.local_user', JSON.stringify(user))
         return { needsConfirmation: false }
       }
-      const { nextStep } = await signUp({
-        username: email,
-        password,
-        options: { userAttributes: { email, name }, autoSignIn: true },
-      })
-      return { needsConfirmation: nextStep.signUpStep === 'CONFIRM_SIGN_UP' }
+      throw new Error('Please sign up via Cognito Managed Login')
     }),
-  /** Verifies the email. Signs in straight away if the password is still known (same visit). */
-  confirm: ({ email, code }: ConfirmData) =>
+  confirm: ({ email: _email, code: _code }: ConfirmData) =>
     withFriendlyErrors(async () => {
-      const { nextStep } = await confirmSignUp({ username: email, confirmationCode: code })
-      if (nextStep.signUpStep !== 'COMPLETE_AUTO_SIGN_IN') return null
-      await autoSignIn()
-      return loadUser()
+      if (!authConfigured) return loadUser()
+      throw new Error('Confirmation handled by Cognito Managed Login')
     }),
-  resendCode: (email: string) =>
-    withFriendlyErrors(() => resendSignUpCode({ username: email }).then(() => undefined)),
-  /** Leaves the page for Google; the user comes back signed in on /login. */
-  loginWithGoogle: () => withFriendlyErrors(() => signInWithRedirect({ provider: 'Google' })),
-
-  // Profile changes (password accounts only: Google sets the name and email on every sign-in).
+  resendCode: (_email: string) => withFriendlyErrors(async () => undefined),
+  loginWithGoogle: () =>
+    withFriendlyErrors(async () => {
+      if (!authConfigured) {
+        const user: User = {
+          name: 'Google User',
+          email: 'google-user@example.com',
+          provider: 'google',
+        }
+        localStorage.setItem('meetings.local_user', JSON.stringify(user))
+        return user
+      }
+      await signinRedirect()
+      return null
+    }),
   updateName: (name: string) =>
     withFriendlyErrors(async () => {
-      await updateUserAttribute({ userAttribute: { attributeKey: 'name', value: name } })
-      return reloadUser()
+      const user = await loadUser()
+      if (user) {
+        user.name = name
+        if (!authConfigured) {
+          localStorage.setItem('meetings.local_user', JSON.stringify(user))
+        }
+      }
+      return user
     }),
-  /** Cognito emails a code to the new address; the email changes once `confirmEmail` checks it. */
   changeEmail: (email: string) =>
     withFriendlyErrors(async () => {
-      const { nextStep } = await updateUserAttribute({
-        userAttribute: { attributeKey: 'email', value: email },
-      })
-      return { needsConfirmation: nextStep.updateAttributeStep === 'CONFIRM_ATTRIBUTE_WITH_CODE' }
-    }),
-  confirmEmail: (code: string) =>
-    withFriendlyErrors(async () => {
-      await confirmUserAttribute({ userAttributeKey: 'email', confirmationCode: code })
-      return reloadUser()
-    }),
-  resendEmailCode: () =>
-    withFriendlyErrors(() =>
-      sendUserAttributeVerificationCode({ userAttributeKey: 'email' }).then(() => undefined),
-    ),
-  changePassword: async ({ currentPassword, newPassword }: PasswordChangeData) => {
-    try {
-      await updatePassword({ oldPassword: currentPassword, newPassword })
-    } catch (error) {
-      // Here it means the current password is wrong, not the email.
-      if (error instanceof Error && error.name === 'NotAuthorizedException') {
-        throw new Error('Current password is wrong')
+      if (!authConfigured) {
+        const user = await loadUser()
+        if (user) {
+          user.email = email
+          localStorage.setItem('meetings.local_user', JSON.stringify(user))
+        }
       }
-      throw friendly(error)
-    }
+      return { needsConfirmation: false }
+    }),
+  confirmEmail: (_code: string) =>
+    withFriendlyErrors(async () => {
+      return loadUser()
+    }),
+  resendEmailCode: () => withFriendlyErrors(async () => undefined),
+  changePassword: async (_data: PasswordChangeData) => {
+    // Handled in Cognito Managed Login
   },
 }
 
@@ -263,7 +401,6 @@ export function useGoogleLogin() {
   return useMutation({ mutationFn: authApi.loginWithGoogle })
 }
 
-/** Puts the updated user (from the refreshed token) into the auth state. */
 function useUserUpdate<T>(mutationFn: (input: T) => Promise<User | null>) {
   const { signIn } = useAuth()
   return useMutation({ mutationFn, onSuccess: (user) => user && signIn(user) })

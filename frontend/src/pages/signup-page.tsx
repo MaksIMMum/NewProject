@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Controller, useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router'
@@ -7,7 +8,7 @@ import { AuthLayout, GoogleButton, OrDivider, PasswordInput } from '@/components
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { useGoogleLogin, useSignup } from '@/lib/auth'
+import { authConfigured, useGoogleLogin, useSignup } from '@/lib/auth'
 
 const signupSchema = z
   .object({
@@ -25,6 +26,13 @@ type SignupValues = z.infer<typeof signupSchema>
 
 export function SignupPage() {
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (authConfigured) {
+      navigate('/login', { replace: true })
+    }
+  }, [navigate])
+
   const signup = useSignup()
   const googleLogin = useGoogleLogin()
   const pending = signup.isPending || googleLogin.isPending
@@ -32,6 +40,10 @@ export function SignupPage() {
     resolver: zodResolver(signupSchema),
     defaultValues: { name: '', email: '', password: '', confirmPassword: '' },
   })
+
+  if (authConfigured) {
+    return null
+  }
 
   const onSuccess = () => navigate('/home', { replace: true })
   const onError = (error: Error) => form.setError('root', { message: error.message })
