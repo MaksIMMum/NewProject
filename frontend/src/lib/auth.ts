@@ -101,7 +101,10 @@ export function clearTokens(): void {
   sessionStorage.removeItem('meetings.pkce_verifier')
 }
 
-export async function signinRedirect(): Promise<void> {
+export async function signinRedirect(options?: {
+  provider?: string
+  prompt?: string
+}): Promise<void> {
   if (!authConfigured) return
   const verifier = generateRandomString(64)
   sessionStorage.setItem('meetings.pkce_verifier', verifier)
@@ -109,8 +112,10 @@ export async function signinRedirect(): Promise<void> {
   const origin = window.location.origin
   const domain = cleanDomain(authConfig.domain)
   const redirectUri = `${origin}/login`
+  const idp = options?.provider ? `&identity_provider=${encodeURIComponent(options.provider)}` : ''
+  const prompt = options?.prompt ?? 'select_account'
 
-  const authorizeUrl = `https://${domain}/oauth2/authorize?client_id=${authConfig.clientId}&response_type=code&scope=openid+email+profile&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${challenge}&code_challenge_method=S256`
+  const authorizeUrl = `https://${domain}/oauth2/authorize?client_id=${authConfig.clientId}&response_type=code&scope=openid+email+profile&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${challenge}&code_challenge_method=S256&prompt=${prompt}${idp}`
 
   window.location.href = authorizeUrl
 }
@@ -209,6 +214,7 @@ export async function refreshTokens(): Promise<string | null> {
 
 export async function signOut(): Promise<void> {
   clearTokens()
+  sessionStorage.setItem('meetings.just_logged_out', 'true')
   const origin = window.location.origin
   if (authConfigured) {
     const domain = cleanDomain(authConfig.domain)

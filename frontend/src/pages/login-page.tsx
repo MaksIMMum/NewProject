@@ -62,6 +62,13 @@ export function LoginPage() {
     const params = new URLSearchParams(window.location.search)
     return Boolean(params.get('code'))
   })
+  const [isLoggedOut] = useState<boolean>(() => {
+    const loggedOut = sessionStorage.getItem('meetings.just_logged_out') === 'true'
+    if (loggedOut) {
+      sessionStorage.removeItem('meetings.just_logged_out')
+    }
+    return loggedOut
+  })
   const handledRef = useRef(false)
 
   useEffect(() => {
@@ -94,10 +101,12 @@ export function LoginPage() {
     }
 
     if (authConfigured) {
-      handledRef.current = true
-      signinRedirect()
+      if (!isLoggedOut) {
+        handledRef.current = true
+        signinRedirect()
+      }
     }
-  }, [from, navigate, signIn])
+  }, [from, isLoggedOut, navigate, signIn])
 
   const onError = (error: Error) => {
     // An unverified account: finish the signup by entering the emailed code.
@@ -123,7 +132,7 @@ export function LoginPage() {
     )
   }
 
-  if (authConfigured && !authError) {
+  if (authConfigured && !authError && !isLoggedOut) {
     return (
       <AuthLayout
         title="Redirecting"
@@ -140,18 +149,34 @@ export function LoginPage() {
 
   return (
     <AuthLayout
-      title="Welcome back"
-      subtitle="Sign in to see your meetings."
+      title={isLoggedOut ? 'Signed out' : 'Welcome back'}
+      subtitle={isLoggedOut ? 'You have been signed out.' : 'Sign in to see your meetings.'}
       footer={
-        <>
-          New here?{' '}
-          <Link
-            to="/signup"
-            className="font-semibold text-hover underline-offset-4 hover:underline"
-          >
-            Create an account
-          </Link>
-        </>
+        authConfigured ? (
+          <span>
+            Need an account?{' '}
+            <button
+              type="button"
+              className="font-semibold text-hover underline-offset-4 hover:underline"
+              onClick={() => {
+                setAuthError(null)
+                signinRedirect({ prompt: 'select_account' })
+              }}
+            >
+              Sign up
+            </button>
+          </span>
+        ) : (
+          <>
+            New here?{' '}
+            <Link
+              to="/signup"
+              className="font-semibold text-hover underline-offset-4 hover:underline"
+            >
+              Create an account
+            </Link>
+          </>
+        )
       }
     >
       {!authConfigured && <AuthNotConfigured />}
@@ -168,15 +193,24 @@ export function LoginPage() {
       )}
       {authConfigured ? (
         <div className="flex flex-col gap-3">
+          <GoogleButton
+            onClick={() => {
+              setAuthError(null)
+              signinRedirect({ provider: 'Google', prompt: 'select_account' })
+            }}
+          >
+            Continue with Google
+          </GoogleButton>
+          <OrDivider />
           <Button
             type="button"
             className="w-full"
             onClick={() => {
               setAuthError(null)
-              signinRedirect()
+              signinRedirect({ prompt: 'select_account' })
             }}
           >
-            Sign in with Cognito
+            Sign in with email
           </Button>
         </div>
       ) : (
