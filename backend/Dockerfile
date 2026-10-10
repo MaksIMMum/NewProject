@@ -2,7 +2,8 @@ FROM python:3.14-slim
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Lets the unchanged uvicorn app run on AWS Lambda; inert everywhere else.
-COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/lambda-adapter-bin
+COPY lambda-adapter-wrapper.py /opt/extensions/lambda-adapter
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -17,5 +18,8 @@ RUN uv sync --locked --no-install-project
 
 COPY . .
 
+RUN chmod +x /opt/extensions/lambda-adapter /app/entrypoint.sh
+
 EXPOSE 8000
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
