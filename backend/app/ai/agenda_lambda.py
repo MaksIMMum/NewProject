@@ -73,11 +73,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     if http_method.upper() == "OPTIONS":
         return {
             "statusCode": 204,
-            "headers": {
-                "access-control-allow-origin": "*",
-                "access-control-allow-methods": "POST, OPTIONS",
-                "access-control-allow-headers": "Content-Type, Authorization",
-            },
+            "headers": {},
         }
 
     # 1. Authentication: verify Cognito token
@@ -90,7 +86,6 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
             "statusCode": 401,
             "headers": {
                 "content-type": "application/json",
-                "access-control-allow-origin": "*",
             },
             "body": json.dumps({"error": f"Unauthorized: {e}"}),
         }
@@ -108,7 +103,6 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
             "statusCode": 400,
             "headers": {
                 "content-type": "application/json",
-                "access-control-allow-origin": "*",
             },
             "body": json.dumps({"error": f"Invalid JSON payload: {e}"}),
         }
@@ -123,7 +117,6 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
             "statusCode": 413,
             "headers": {
                 "content-type": "application/json",
-                "access-control-allow-origin": "*",
             },
             "body": json.dumps({"error": "Payload Too Large: text exceeds 10,000 characters"}),
         }
@@ -133,7 +126,6 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
             "statusCode": 422,
             "headers": {
                 "content-type": "application/json",
-                "access-control-allow-origin": "*",
             },
             "body": json.dumps({"error": "text cannot be empty"}),
         }
@@ -145,7 +137,6 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
             "statusCode": 400,
             "headers": {
                 "content-type": "application/json",
-                "access-control-allow-origin": "*",
             },
             "body": json.dumps({"error": "Invalid date format for 'today' (expected YYYY-MM-DD)"}),
         }
@@ -159,7 +150,6 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
             "statusCode": 422,
             "headers": {
                 "content-type": "application/json",
-                "access-control-allow-origin": "*",
             },
             "body": json.dumps({"error": str(e)}),
         }
@@ -169,7 +159,6 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
             "statusCode": 500,
             "headers": {
                 "content-type": "application/json",
-                "access-control-allow-origin": "*",
             },
             "body": json.dumps({"error": "Internal server error during agenda parsing"}),
         }
@@ -194,7 +183,6 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
         "statusCode": 200,
         "headers": {
             "content-type": "application/json",
-            "access-control-allow-origin": "*",
         },
         "body": json.dumps(
             {

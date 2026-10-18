@@ -65,7 +65,6 @@ def test_lambda_handler_options():
     event = {"httpMethod": "OPTIONS"}
     resp = handler(event)
     assert resp["statusCode"] == 204
-    assert resp["headers"]["access-control-allow-origin"] == "*"
 
 
 def test_lambda_handler_payload_too_large():

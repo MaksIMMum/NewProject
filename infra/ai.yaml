@@ -115,6 +115,7 @@ Resources:
         AllowHeaders:
           - authorization
           - content-type
+        MaxAge: 86400
 
   AgendaParserUrlPermission:
     Type: AWS::Lambda::Permission
