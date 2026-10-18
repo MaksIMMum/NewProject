@@ -13,9 +13,16 @@ main() {
   require_auth_stack
   api_base_url="$(output "$BACKEND_STACK" ApiBaseUrl)"
 
-  echo "==> [1/6] Build the frontend (API: $api_base_url)"
+  AI_STACK="$PROJECT_NAME-ai"
+  ai_url=""
+  if stack_exists "$AI_STACK"; then
+    ai_url="$(output "$AI_STACK" AiUrl)"
+  fi
+
+  echo "==> [1/6] Build the frontend (API: $api_base_url, AI: ${ai_url:-none})"
   (cd frontend && npm ci && \
     VITE_API_URL="$api_base_url" \
+    VITE_AI_URL="$ai_url" \
     COGNITO_USER_POOL_ID="$(output "$AUTH_STACK" UserPoolId)" \
     COGNITO_CLIENT_ID="$(output "$AUTH_STACK" UserPoolClientId)" \
     COGNITO_DOMAIN="$(output "$AUTH_STACK" Domain)" \

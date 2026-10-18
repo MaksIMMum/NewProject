@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.auth import CurrentUser
 from app.db import SessionDep
 from app.models import Meeting, Participant, User
-from app.schemas import MeetingCreate, MeetingRead
+from app.schemas import AgendaSavePayload, MeetingCreate, MeetingRead
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 
@@ -98,3 +98,33 @@ async def delete_meeting(meeting_id: uuid.UUID, session: SessionDep, user: Curre
     await session.delete(meeting)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{meeting_id}/agenda", response_model=MeetingRead)
+async def save_agenda(
+    meeting_id: uuid.UUID,
+    payload: AgendaSavePayload,
+    session: SessionDep,
+    user: CurrentUser,
+) -> Meeting:
+    meeting = await _get_meeting(session, meeting_id, user)
+    meeting.agenda = payload.agenda
+    if payload.ai_suggestion is not None:
+        meeting.ai_suggestion = payload.ai_suggestion
+    await session.commit()
+    session.expunge(meeting)
+    return await _get_meeting(session, meeting_id, user)
+
+
+@router.delete("/{meeting_id}/agenda", response_model=MeetingRead)
+async def delete_agenda(
+    meeting_id: uuid.UUID,
+    session: SessionDep,
+    user: CurrentUser,
+) -> Meeting:
+    meeting = await _get_meeting(session, meeting_id, user)
+    meeting.agenda = None
+    meeting.ai_suggestion = None
+    await session.commit()
+    session.expunge(meeting)
+    return await _get_meeting(session, meeting_id, user)

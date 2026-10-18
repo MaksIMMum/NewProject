@@ -44,3 +44,26 @@ export function useCreateParticipant() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: participantsKey }),
   })
 }
+
+export function useSaveAgenda() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      meetingId,
+      ...data
+    }: {
+      meetingId: string
+      agenda: Parameters<typeof api.saveAgenda>[1]['agenda']
+      ai_suggestion?: Parameters<typeof api.saveAgenda>[1]['ai_suggestion']
+    }) => api.saveAgenda(meetingId, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: meetingsKey }),
+  })
+}
+
+export function useDeleteAgenda() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (meetingId: string) => api.deleteAgenda(meetingId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: meetingsKey }),
+  })
+}

@@ -1,6 +1,6 @@
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import (
     AfterValidator,
@@ -62,6 +62,11 @@ class MeetingCreate(BaseModel):
         return self
 
 
+class AgendaSavePayload(BaseModel):
+    agenda: dict[str, Any]
+    ai_suggestion: dict[str, Any] | None = None
+
+
 class MeetingRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -72,6 +77,8 @@ class MeetingRead(BaseModel):
     ends_at: datetime
     place: str
     participants: list[ParticipantRead]
+    agenda: dict[str, Any] | None = None
+    ai_suggestion: dict[str, Any] | None = None
     created_at: datetime
 
     @field_serializer("starts_at", "ends_at", "created_at")

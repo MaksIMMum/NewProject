@@ -8,6 +8,34 @@ export type Participant = {
   email: string
 }
 
+export type AgendaItem = {
+  topic: string
+  owner: string | null
+  minutes: number | null
+}
+
+export type ActionItem = {
+  task: string
+  owner: string | null
+  due: string | null
+}
+
+export type ParsedAgenda = {
+  title: string | null
+  starts_at: string | null
+  duration_minutes: number | null
+  items: AgendaItem[]
+  action_items: ActionItem[]
+  language: string
+}
+
+export type AiSuggestion = {
+  model: string
+  prompt_version: string
+  raw_text?: string
+  agenda: ParsedAgenda
+}
+
 export type Meeting = {
   id: string
   title: string
@@ -16,6 +44,8 @@ export type Meeting = {
   ends_at: string
   place: string
   participants: Participant[]
+  agenda?: ParsedAgenda | null
+  ai_suggestion?: AiSuggestion | null
   created_at: string
 }
 
@@ -45,6 +75,7 @@ export class ApiError extends Error {
 // Backend origin, set at build time for AWS (the Lambda function URL). Empty locally,
 // where the Vite dev server or nginx proxies /api to the backend.
 const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '')
+const AI_URL = (import.meta.env.VITE_AI_URL ?? '').replace(/\/+$/, '')
 
 type ValidationIssue = { loc?: (string | number)[]; msg: string }
 
@@ -101,4 +132,48 @@ export const api = {
   listParticipants: () => request<Participant[]>('/participants'),
   createParticipant: (data: ParticipantCreate) =>
     request<Participant>('/participants', { method: 'POST', body: JSON.stringify(data) }),
+  parseAgenda: async (
+    payload: { text: string; today: string; tz: string },
+    signal?: AbortSignal,
+  ): Promise<{ agenda: ParsedAgenda; model: string; prompt_version: string }> => {
+    const token = await getIdToken()
+    const targetUrl = AI_URL || '/api/ai/parse'
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify(payload),
+      signal,
+    })
+    if (!response.ok) {
+      let detail: unknown
+      try {
+        const body = await response.json()
+        detail = body.error ?? body.detail
+      } catch {
+        // response body was not JSON
+      }
+      throw new ApiError(
+        response.status,
+        (typeof detail === 'string' ? detail : '') ||
+          response.statusText ||
+          'Failed to parse agenda',
+      )
+    }
+    return response.json()
+  },
+  saveAgenda: (
+    meetingId: string,
+    data: { agenda: ParsedAgenda; ai_suggestion?: AiSuggestion | null },
+  ) =>
+    request<Meeting>(`/meetings/${meetingId}/agenda`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  deleteAgenda: (meetingId: string) =>
+    request<Meeting>(`/meetings/${meetingId}/agenda`, {
+      method: 'DELETE',
+    }),
 }

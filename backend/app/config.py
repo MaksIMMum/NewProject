@@ -21,6 +21,9 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:3000",
     ]
+    parser_model: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    prompt_version: str = "agenda-v1"
+    aws_region: str = "us-east-1"
 
     @field_validator("cors_origins", mode="before")
     @classmethod

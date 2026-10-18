@@ -179,3 +179,41 @@ async def test_duplicate_participant_email(client: AsyncClient) -> None:
 async def test_invalid_participant_email(client: AsyncClient) -> None:
     response = await client.post("/api/participants", json={"name": "X", "email": "not-an-email"})
     assert response.status_code == 422
+
+
+async def test_save_and_delete_agenda(client: AsyncClient) -> None:
+    res = await client.post("/api/meetings", json=meeting_payload(title="Sprint Retrospective"))
+    assert res.status_code == 201
+    created = res.json()
+    meeting_id = created["id"]
+    assert created["agenda"] is None
+
+    agenda_data = {
+        "title": "Sprint Retrospective",
+        "items": [{"topic": "What went well", "owner": "Max", "minutes": 15}],
+        "action_items": [{"task": "Fix CI", "owner": "Max", "due": "2026-10-25"}],
+        "language": "en",
+    }
+    ai_suggestion_data = {
+        "model": "anthropic.claude-haiku-5-5",
+        "prompt_version": "agenda-v1",
+        "raw_text": "Retro notes...",
+    }
+
+    response = await client.post(
+        f"/api/meetings/{meeting_id}/agenda",
+        json={"agenda": agenda_data, "ai_suggestion": ai_suggestion_data},
+    )
+    assert response.status_code == 200
+    saved = response.json()
+    assert saved["agenda"]["title"] == "Sprint Retrospective"
+    assert saved["agenda"]["items"][0]["topic"] == "What went well"
+    assert saved["ai_suggestion"]["model"] == "anthropic.claude-haiku-5-5"
+
+    get_res = await client.get(f"/api/meetings/{meeting_id}")
+    assert get_res.status_code == 200
+    assert get_res.json()["agenda"] == agenda_data
+
+    del_res = await client.delete(f"/api/meetings/{meeting_id}/agenda")
+    assert del_res.status_code == 200
+    assert del_res.json()["agenda"] is None

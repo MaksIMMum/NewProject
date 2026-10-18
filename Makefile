@@ -8,7 +8,7 @@ s ?=
 .DEFAULT_GOAL := help
 .PHONY: help env build up down restart logs ps migrate migration seed psql test lint format \
 	dev-backend dev-frontend install clean deploy deploy-auth deploy-backend deploy-frontend destroy-auth destroy-backend destroy-frontend add-domain remove-domain infra-lint \
-	deploy-reports report-now destroy-reports
+	deploy-reports report-now destroy-reports llm-hello parse deploy-ai destroy-ai
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
@@ -81,7 +81,8 @@ AWS_ENV := AWS_ACCESS_KEY_ID="$(AWS_ACCESS_KEY_ID)" AWS_SECRET_ACCESS_KEY="$(AWS
 	PROJECT_NAME="$(or $(PROJECT_NAME),$(APP_NAME))" CORS_ORIGINS_AWS="$(CORS_ORIGINS_AWS)" \
 	LAMBDA_MEMORY="$(LAMBDA_MEMORY)" DOMAIN_NAME="$(DOMAIN_NAME)" HOSTED_ZONE_ID="$(HOSTED_ZONE_ID)" \
 	GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)" \
-	RECIPIENT_EMAIL="$(RECIPIENT_EMAIL)" SENDER_EMAIL="$(SENDER_EMAIL)"
+	RECIPIENT_EMAIL="$(RECIPIENT_EMAIL)" SENDER_EMAIL="$(SENDER_EMAIL)" \
+	PARSER_MODEL="$(or $(PARSER_MODEL),anthropic.claude-haiku-5-5)" ALERT_EMAIL="$(or $(ALERT_EMAIL),$(RECIPIENT_EMAIL))"
 
 deploy: deploy-backend deploy-frontend ## Deploy the whole app to AWS (after make deploy-auth)
 
@@ -120,3 +121,15 @@ destroy-frontend: env ## Delete the S3 bucket, CloudFront distribution and domai
 
 infra-lint: ## Lint the CloudFormation templates
 	uvx cfn-lint infra/*.yaml
+
+llm-hello: env ## Test Bedrock Anthropic Messages API connectivity from laptop
+	@$(AWS_ENV) PATH="$(HOME)/.local/bin:$$PATH" sh -c 'cd backend && uv run python -m app.ai.cli hello'
+
+parse: env ## Parse agenda text on laptop: make parse TEXT="..."
+	@$(AWS_ENV) TEXT="$(TEXT)" PATH="$(HOME)/.local/bin:$$PATH" sh -c 'cd backend && uv run python -m app.ai.cli parse'
+
+deploy-ai: env ## Deploy the AI agenda-parser stack (Lambda, Function URL, Budgets)
+	@$(AWS_ENV) ./infra/deploy-ai.sh
+
+destroy-ai: env ## Delete the AI stack
+	@$(AWS_ENV) ./infra/destroy-ai.sh

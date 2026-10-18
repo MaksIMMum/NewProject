@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  AI Agenda Parser infrastructure stack for Meetings App (Lab 6).
+  Runs outside the VPC with direct internet access to Amazon Bedrock,
+  providing a public Function URL with Cognito token verification.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: meetings
+    AllowedPattern: "[a-z][a-z0-9-]*"
+  ImageUri:
+    Type: String
+    Description: Full backend image URI including tag.
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito user pool ID for verifying ID tokens.
+  CognitoClientId:
+    Type: String
+    Description: Cognito app client ID.
+  ParserModel:
+    Type: String
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: Foundation model ID on Amazon Bedrock.
+  AllowedOrigins:
+    Type: String
+    Default: "*"
+    Description: Comma-separated CORS origins allowed to call the parser.
+  AlertEmail:
+    Type: String
+    Default: kornatskyy.pn@ucu.edu.ua
+    Description: Email address for AWS Budgets monthly alarm ($5.00).
+
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks: [W1011]
+
+Resources:
+  # ------------------------------------------------------------- CloudWatch Logs
+  AgendaParserLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProjectName}-agenda-parser
+      RetentionInDays: 7
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # ------------------------------------------------------------------- IAM Role
+  AgendaParserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BedrockInference
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock-mantle:CreateInference
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: "*"
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # ------------------------------------------------- Lambda Function (No VPC)
+  AgendaParserFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-agenda-parser
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command:
+          - app.ai.agenda_lambda.handler
+      Role: !GetAtt AgendaParserRole.Arn
+      Timeout: 30
+      MemorySize: 512
+      LoggingConfig:
+        LogGroup: !Ref AgendaParserLogGroup
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          COGNITO_CLIENT_ID: !Ref CognitoClientId
+          PARSER_MODEL: !Ref ParserModel
+          PROMPT_VERSION: agenda-v1
+          AWS_LWA_ENABLE: "false"
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # ------------------------------------------------------------ Function URL
+  AgendaParserFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt AgendaParserFunction.Arn
+      AuthType: NONE
+      Cors:
+        AllowOrigins: !Split [",", !Ref AllowedOrigins]
+        AllowMethods:
+          - POST
+        AllowHeaders:
+          - authorization
+          - content-type
+
+  AgendaParserUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AgendaParserFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  AgendaParserInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AgendaParserFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+  # --------------------------------------------------------------- AWS Budget
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub ${ProjectName}-ai-monthly-budget
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: 5
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+
+Outputs:
+  AiFunctionUrl:
+    Description: Function URL of the AI agenda parser
+    Value: !GetAtt AgendaParserFunctionUrl.FunctionUrl
+  AiUrl:
+    Description: Function URL without trailing slash
+    Value: !Sub
+      - https://${Domain}
+      - Domain: !Select [2, !Split ["/", !GetAtt AgendaParserFunctionUrl.FunctionUrl]]
+  AgendaParserFunctionName:
+    Value: !Ref AgendaParserFunction
+  AgendaParserLogGroup:
+    Value: !Ref AgendaParserLogGroup

@@ -10,7 +10,7 @@ if os.environ.get("AWS_LWA_ENABLE") == "false" or not os.environ.get("AWS_LWA_PO
     if api:
         req = urllib.request.Request(
             f"http://{api}/2020-01-01/extension/register",
-            data=json.dumps({"events": ["INVOKE", "SHUTDOWN"]}).encode("utf-8"),
+            data=json.dumps({"events": ["SHUTDOWN"]}).encode("utf-8"),
             headers={
                 "Lambda-Extension-Name": "lambda-adapter",
                 "Content-Type": "application/json",
