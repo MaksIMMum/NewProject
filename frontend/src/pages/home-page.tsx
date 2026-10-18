@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { addDays } from 'date-fns'
-import { LogOutIcon, PlusIcon } from 'lucide-react'
+import { LogOutIcon, PlusIcon, SparklesIcon } from 'lucide-react'
 import { DateNavigation, ViewSwitcher } from '@/components/calendar-toolbar'
 import { DeleteMeetingDialog } from '@/components/delete-meeting-dialog'
 import { MeetingDetailsDialog } from '@/components/meeting-details-dialog'
 import { MeetingFormDialog } from '@/components/meeting-form-dialog'
 import { MeetingsView } from '@/components/meetings-view'
+import { PasteAgendaDialog } from '@/components/paste-agenda-dialog'
 import { Button } from '@/components/ui/button'
 import { useMeetings } from '@/hooks/queries'
 import type { Meeting } from '@/lib/api'
@@ -26,6 +27,7 @@ export function HomePage() {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [viewedId, setViewedId] = useState<string | null>(null)
   const [meetingToDelete, setMeetingToDelete] = useState<Meeting | null>(null)
+  const [standalonePasteOpen, setStandalonePasteOpen] = useState(false)
 
   // Look the meeting up in the list so the details stay fresh after an edit.
   const viewedMeeting = meetings.data?.find((m) => m.id === viewedId) ?? null
@@ -69,6 +71,15 @@ export function HomePage() {
         </div>
         <div className="order-2 ml-auto flex items-center gap-2 md:order-3">
           <ViewSwitcher mode={mode} onModeChange={setMode} />
+          <Button
+            variant="outline"
+            onClick={() => setStandalonePasteOpen(true)}
+            aria-label="Paste an agenda"
+            className="max-sm:px-3 gap-1.5"
+          >
+            <SparklesIcon className="size-4 text-primary" />
+            <span className="max-sm:hidden">Paste an agenda</span>
+          </Button>
           <Button onClick={() => openCreate()} aria-label="Add meeting" className="max-sm:px-3">
             <PlusIcon />
             <span className="max-sm:hidden">Add meeting</span>
@@ -118,6 +129,11 @@ export function HomePage() {
         onOpenChange={setDetailsOpen}
         onEdit={openEdit}
         onDelete={openDelete}
+      />
+      <PasteAgendaDialog
+        meeting={null}
+        open={standalonePasteOpen}
+        onOpenChange={setStandalonePasteOpen}
       />
       <DeleteMeetingDialog meeting={meetingToDelete} onClose={() => setMeetingToDelete(null)} />
     </div>

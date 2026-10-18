@@ -25,8 +25,22 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { useSaveAgenda } from '@/hooks/queries'
+import { useCreateMeeting, useSaveAgenda } from '@/hooks/queries'
 import { type ActionItem, type AgendaItem, api, type Meeting, type ParsedAgenda } from '@/lib/api'
+
+function parseMeetingStartsAt(startsAt: string | null | undefined): Date {
+  if (!startsAt) return new Date()
+  const d = new Date(startsAt)
+  if (!isNaN(d.getTime())) return d
+
+  const timeMatch = startsAt.match(/^(\d{1,2}):(\d{2})/)
+  if (timeMatch) {
+    const now = new Date()
+    now.setHours(parseInt(timeMatch[1], 10), parseInt(timeMatch[2], 10), 0, 0)
+    return now
+  }
+  return new Date()
+}
 
 type Props = {
   meeting: Meeting | null
@@ -65,7 +79,9 @@ export function PasteAgendaDialog({ meeting, open, onOpenChange }: Props) {
   // Tracking touched/edited fields to clear the "suggested" badges
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set())
 
+  const createMeetingMutation = useCreateMeeting()
   const saveAgendaMutation = useSaveAgenda()
+  const [isSaving, setIsSaving] = useState(false)
 
   // Reset or initialize when opened
   useEffect(() => {
@@ -76,6 +92,15 @@ export function PasteAgendaDialog({ meeting, open, onOpenChange }: Props) {
       setStep('form')
       setTouchedFields(new Set(['all']))
     } else {
+      setAgenda({
+        title: '',
+        starts_at: null,
+        duration_minutes: null,
+        items: [],
+        action_items: [],
+        language: 'en',
+      })
+      setAiMetadata(null)
       setStep('paste')
       setRawText('')
       setParseError(null)
@@ -158,32 +183,54 @@ export function PasteAgendaDialog({ meeting, open, onOpenChange }: Props) {
     setElapsedSeconds(0)
   }
 
-  const handleSave = () => {
-    if (!meeting) return
+  const handleSave = async () => {
+    try {
+      setIsSaving(true)
+      const aiPayload = aiMetadata
+        ? {
+            model: aiMetadata.model,
+            prompt_version: aiMetadata.prompt_version,
+            raw_text: rawText,
+            agenda: aiMetadata.raw_suggestion,
+          }
+        : (meeting?.ai_suggestion ?? null)
 
-    saveAgendaMutation.mutate(
-      {
-        meetingId: meeting.id,
-        agenda,
-        ai_suggestion: aiMetadata
-          ? {
-              model: aiMetadata.model,
-              prompt_version: aiMetadata.prompt_version,
-              raw_text: rawText,
-              agenda: aiMetadata.raw_suggestion,
-            }
-          : (meeting.ai_suggestion ?? null),
-      },
-      {
-        onSuccess: () => {
-          toast.success('Agenda saved to meeting')
-          onOpenChange(false)
-        },
-        onError: (err) => {
-          toast.error(err.message || 'Failed to save agenda')
-        },
-      },
-    )
+      if (meeting) {
+        await saveAgendaMutation.mutateAsync({
+          meetingId: meeting.id,
+          agenda,
+          ai_suggestion: aiPayload,
+        })
+        toast.success('Agenda saved to meeting')
+      } else {
+        const startsAtDate = parseMeetingStartsAt(agenda.starts_at)
+        const durationMin =
+          agenda.duration_minutes && agenda.duration_minutes > 0 ? agenda.duration_minutes : 45
+        const endsAtDate = new Date(startsAtDate.getTime() + durationMin * 60000)
+
+        const created = await createMeetingMutation.mutateAsync({
+          title: agenda.title?.trim() || 'Team Sync',
+          description: `Agenda parsed with ${aiMetadata?.model || 'Claude'}`,
+          starts_at: startsAtDate.toISOString(),
+          ends_at: endsAtDate.toISOString(),
+          place: 'Online',
+          participant_ids: [],
+        })
+
+        await saveAgendaMutation.mutateAsync({
+          meetingId: created.id,
+          agenda,
+          ai_suggestion: aiPayload,
+        })
+        toast.success('Meeting created with agenda')
+      }
+      onOpenChange(false)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save agenda'
+      toast.error(message)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   // Agenda item handlers
@@ -248,12 +295,18 @@ export function PasteAgendaDialog({ meeting, open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-2xl">
             <SparklesIcon className="size-5 text-primary" />
-            {step === 'paste' ? 'Paste an agenda' : 'Review & save agenda'}
+            {step === 'paste'
+              ? 'Paste an agenda'
+              : meeting
+                ? 'Review & save agenda'
+                : 'Review & create meeting'}
           </DialogTitle>
           <DialogDescription>
             {step === 'paste'
               ? 'Paste an email, chat message, or notes. Claude will extract topics, owners, durations, and action items.'
-              : 'Check the AI-suggested fields, make any corrections, and save to your meeting.'}
+              : meeting
+                ? 'Check the AI-suggested fields, make any corrections, and save to your meeting.'
+                : 'Check the AI-suggested fields, make any corrections, and create your meeting.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -616,13 +669,21 @@ export function PasteAgendaDialog({ meeting, open, onOpenChange }: Props) {
                 <Button variant="outline" onClick={() => onOpenChange(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleSave} disabled={saveAgendaMutation.isPending}>
-                  {saveAgendaMutation.isPending ? (
-                    'Saving...'
+                <Button
+                  onClick={handleSave}
+                  disabled={
+                    isSaving || saveAgendaMutation.isPending || createMeetingMutation.isPending
+                  }
+                >
+                  {isSaving || saveAgendaMutation.isPending || createMeetingMutation.isPending ? (
+                    <>
+                      <Loader2Icon className="size-4 animate-spin" />
+                      {meeting ? 'Saving...' : 'Creating meeting...'}
+                    </>
                   ) : (
                     <>
                       <CheckCircle2Icon className="size-4" />
-                      Save agenda
+                      {meeting ? 'Save agenda' : 'Create meeting'}
                     </>
                   )}
                 </Button>
