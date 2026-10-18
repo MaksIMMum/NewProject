@@ -244,10 +244,20 @@ export function MeetingDetailsDialog({ meeting, open, onOpenChange, onEdit, onDe
                       )}
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between rounded-lg border border-dashed border-border p-3 text-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-dashed border-border/80 bg-muted/20 p-3.5 text-sm">
                       <p className="text-xs text-muted-foreground">
-                        No agenda yet. Paste an email or Slack note to parse it automatically.
+                        No agenda yet. Paste an email, Slack note, or rough bullets to extract
+                        topics and action items with Claude.
                       </p>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="shrink-0 gap-1.5 font-medium"
+                        onClick={() => setAgendaOpen(true)}
+                      >
+                        <SparklesIcon className="size-3.5" />
+                        Paste an agenda
+                      </Button>
                     </div>
                   )}
                 </div>

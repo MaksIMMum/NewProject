@@ -1,5 +1,5 @@
 import { format, getHours, isToday, setHours, startOfHour } from 'date-fns'
-import { MapPinIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { MapPinIcon, PencilIcon, PlusIcon, SparklesIcon, Trash2Icon } from 'lucide-react'
 import { Fragment } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -43,12 +43,27 @@ type Props = {
 
 function RowActions({
   meeting,
+  onOpen,
   onEdit,
   onDelete,
-}: { meeting: Meeting } & Pick<Props, 'onEdit' | 'onDelete'>) {
+}: { meeting: Meeting } & Pick<Props, 'onOpen' | 'onEdit' | 'onDelete'>) {
   // stopPropagation: the row itself opens the details view.
   return (
-    <div className="flex shrink-0 gap-1">
+    <div className="flex shrink-0 items-center gap-1.5">
+      <Button
+        variant={meeting.agenda ? 'outline' : 'secondary'}
+        size="sm"
+        className="h-8 gap-1.5 px-2.5 text-xs font-medium"
+        aria-label="Paste an agenda"
+        title={meeting.agenda ? 'View / Edit agenda' : 'Paste an agenda'}
+        onClick={(event) => {
+          event.stopPropagation()
+          onOpen(meeting)
+        }}
+      >
+        <SparklesIcon className="size-3.5 text-primary" />
+        <span>{meeting.agenda ? 'Agenda' : 'Paste agenda'}</span>
+      </Button>
       <Button
         variant="ghost"
         size="icon-sm"
@@ -96,7 +111,9 @@ function MeetingRow({
   onEdit,
   onDelete,
 }: { meeting: Meeting; day: Date } & Omit<Props, 'days' | 'meetings' | 'onCreateAt'>) {
-  const actions = <RowActions meeting={meeting} onEdit={onEdit} onDelete={onDelete} />
+  const actions = (
+    <RowActions meeting={meeting} onOpen={onOpen} onEdit={onEdit} onDelete={onDelete} />
+  )
   return (
     <div
       className="group flex cursor-pointer flex-col gap-2 px-4 py-2.5 transition-colors hover:bg-muted md:grid md:grid-cols-[8rem_minmax(0,1fr)_minmax(0,12rem)_minmax(0,14rem)_auto] md:items-center md:gap-4"
