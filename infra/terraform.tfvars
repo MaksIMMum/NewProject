@@ -9,7 +9,8 @@ aws_region   = "us-east-1"
 # Frontend origins for CORS and OAuth redirects
 app_urls = [
   "http://localhost:5173",
-  "http://localhost:3000"
+  "http://localhost:3000",
+  "https://d2nhrdwea9rh36.cloudfront.net"
 ]
 
 # Email Configuration
