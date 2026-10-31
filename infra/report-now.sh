@@ -7,14 +7,12 @@ main() {
   source infra/common.sh
 
   REPORTS_STACK="$PROJECT_NAME-reports"
-  if ! stack_exists "$REPORTS_STACK"; then
-    echo "Stack $REPORTS_STACK not found; run make deploy-reports first." >&2
-    exit 1
-  fi
-
   queue_url="$(output "$REPORTS_STACK" ReportRequestsQueueUrl)"
+  if [ -z "$queue_url" ] || [ "$queue_url" = "None" ]; then
+    queue_url="$(aws sqs get-queue-url --queue-name "$PROJECT_NAME-report-requests" --query QueueUrl --output text 2>/dev/null || true)"
+  fi
   if [ -z "$queue_url" ]; then
-    echo "Could not find ReportRequestsQueueUrl in stack $REPORTS_STACK." >&2
+    echo "Could not find ReportRequestsQueueUrl for $PROJECT_NAME." >&2
     exit 1
   fi
 

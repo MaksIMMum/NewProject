@@ -8,7 +8,8 @@ s ?=
 .DEFAULT_GOAL := help
 .PHONY: help env build up down restart logs ps migrate migration seed psql test lint format \
 	dev-backend dev-frontend install clean deploy deploy-auth deploy-backend deploy-frontend destroy-auth destroy-backend destroy-frontend add-domain remove-domain infra-lint \
-	deploy-reports report-now destroy-reports llm-hello parse deploy-ai destroy-ai
+	deploy-reports report-now destroy-reports llm-hello parse deploy-ai destroy-ai \
+	infra-fmt infra-validate infra-plan
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
@@ -86,20 +87,18 @@ AWS_ENV := AWS_ACCESS_KEY_ID="$(AWS_ACCESS_KEY_ID)" AWS_SECRET_ACCESS_KEY="$(AWS
 
 deploy: deploy-backend deploy-frontend ## Deploy the whole app to AWS (after make deploy-auth)
 
-deploy-auth: env ## Deploy Cognito (user pool + app client), print its settings and write them to .env
-	@$(AWS_ENV) ./infra/deploy-auth.sh
+deploy-auth: infra-plan ## [Migrated to Terraform] Plan authentication infrastructure (infra/auth.tf)
 
 deploy-backend: env ## Deploy backend (Lambda) + database (Aurora Serverless) to AWS, see infra/
 	@$(AWS_ENV) ./infra/deploy-backend.sh
 
-deploy-reports: env ## Deploy the reports infrastructure stack (EventBridge, SQS, S3, Lambdas, SES)
-	@$(AWS_ENV) ./infra/deploy-reports.sh
+deploy-reports: infra-plan ## [Migrated to Terraform] Plan reports infrastructure (infra/reports.tf)
 
 report-now: env ## Build a report on demand via SQS: make report-now WEEK=2026-W39
 	@$(AWS_ENV) ./infra/report-now.sh $(WEEK)
 
-destroy-reports: env ## Delete the reports stack and empty its bucket
-	@$(AWS_ENV) ./infra/destroy-reports.sh
+destroy-reports: ## [Migrated to Terraform] Infrastructure lifecycle managed via HCP Terraform
+	@echo "Reports infrastructure is managed via Terraform. Use HCP Terraform or terraform destroy in infra/."
 
 deploy-frontend: env ## Deploy frontend to S3 + CloudFront, wired to the Lambda URL (after deploy-backend)
 	@$(AWS_ENV) ./infra/deploy-frontend.sh
@@ -110,8 +109,8 @@ add-domain: env ## Attach DOMAIN_NAME from .env to the deployed frontend
 remove-domain: env ## Detach the custom domain and delete its certificate
 	@$(AWS_ENV) ./infra/remove-domain.sh
 
-destroy-auth: env ## Delete the Cognito stack (the user pool and its accounts are kept)
-	@$(AWS_ENV) ./infra/destroy-auth.sh
+destroy-auth: ## [Migrated to Terraform] Infrastructure lifecycle managed via HCP Terraform
+	@echo "Auth infrastructure is managed via Terraform. Use HCP Terraform or terraform destroy in infra/."
 
 destroy-backend: env ## Delete the AWS backend stacks (keeps a final DB snapshot)
 	@$(AWS_ENV) ./infra/destroy-backend.sh
@@ -119,8 +118,18 @@ destroy-backend: env ## Delete the AWS backend stacks (keeps a final DB snapshot
 destroy-frontend: env ## Delete the S3 bucket, CloudFront distribution and domain certificate
 	@$(AWS_ENV) ./infra/destroy-frontend.sh
 
-infra-lint: ## Lint the CloudFormation templates
+infra-lint: ## Lint remaining CloudFormation templates
 	uvx cfn-lint infra/*.yaml
+
+infra-fmt: ## Format Terraform configuration files in infra/
+	@PATH="$(HOME)/.local/bin:$$PATH" terraform -chdir=infra fmt
+
+infra-validate: ## Validate Terraform syntax and configuration in infra/
+	@PATH="$(HOME)/.local/bin:$$PATH" terraform -chdir=infra init -backend=false >/dev/null 2>&1 || true
+	@PATH="$(HOME)/.local/bin:$$PATH" terraform -chdir=infra validate
+
+infra-plan: env ## Run terraform plan via HCP Terraform
+	@$(AWS_ENV) PATH="$(HOME)/.local/bin:$$PATH" terraform -chdir=infra plan
 
 llm-hello: env ## Test Bedrock Anthropic Messages API connectivity from laptop
 	@$(AWS_ENV) PATH="$(HOME)/.local/bin:$$PATH" sh -c 'cd backend && uv run python -m app.ai.cli hello'
@@ -128,8 +137,7 @@ llm-hello: env ## Test Bedrock Anthropic Messages API connectivity from laptop
 parse: env ## Parse agenda text on laptop: make parse TEXT="..."
 	@$(AWS_ENV) TEXT="$(TEXT)" PATH="$(HOME)/.local/bin:$$PATH" sh -c 'cd backend && uv run python -m app.ai.cli parse'
 
-deploy-ai: env ## Deploy the AI agenda-parser stack (Lambda, Function URL, Budgets)
-	@$(AWS_ENV) ./infra/deploy-ai.sh
+deploy-ai: infra-plan ## [Migrated to Terraform] Plan AI agenda-parser infrastructure (infra/ai.tf)
 
-destroy-ai: env ## Delete the AI stack
-	@$(AWS_ENV) ./infra/destroy-ai.sh
+destroy-ai: ## [Migrated to Terraform] Infrastructure lifecycle managed via HCP Terraform
+	@echo "AI infrastructure is managed via Terraform. Use HCP Terraform or terraform destroy in infra/."

@@ -22,10 +22,15 @@ CERT_REGION="us-east-1"
 TAG_KEY="PROJECT_NAME"
 STACK_TAGS=("$TAG_KEY=$PROJECT_NAME")
 
-# output STACK KEY [REGION]: prints one CloudFormation stack output (empty if absent).
+# output STACK KEY [REGION]: prints one CloudFormation stack output or Terraform output.
 output() {
-  aws cloudformation describe-stacks --stack-name "$1" --region "${3:-$AWS_REGION}" \
-    --query "Stacks[0].Outputs[?OutputKey=='$2'].OutputValue" --output text
+  local val
+  val="$(aws cloudformation describe-stacks --stack-name "$1" --region "${3:-$AWS_REGION}" \
+    --query "Stacks[0].Outputs[?OutputKey=='$2'].OutputValue" --output text 2>/dev/null || true)"
+  if [ -z "$val" ] || [ "$val" = "None" ]; then
+    val="$(PATH="$HOME/.local/bin:$PATH" terraform -chdir=infra output -raw "$2" 2>/dev/null || true)"
+  fi
+  echo "$val"
 }
 
 # stack_exists STACK [REGION]

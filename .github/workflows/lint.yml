@@ -63,7 +63,7 @@ jobs:
         run: npx prettier --check .
 
   infra:
-    name: Infrastructure (cfn-lint)
+    name: Infrastructure (cfn-lint + terraform)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -74,3 +74,16 @@ jobs:
 
       - name: Lint CloudFormation templates
         run: uvx cfn-lint infra/*.yaml
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Terraform format check
+        run: terraform -chdir=infra fmt -check
+
+      - name: Terraform validate
+        run: |
+          cd infra
+          terraform init -backend=false
+          terraform validate

@@ -1,0 +1,33 @@
+# =============================================================================
+# Example Terraform Variables Configuration (Development Template)
+# =============================================================================
+
+project_name = "new-project"
+aws_region   = "us-east-1"
+
+# Frontend origins for CORS and OAuth redirects
+app_urls = [
+  "http://localhost:5173",
+  "http://localhost:3000"
+]
+
+# Google OAuth Credentials (Optional - leave empty to disable Google sign-in)
+google_client_id     = ""
+google_client_secret = ""
+
+# Email Configuration
+recipient_email = "kornatskyy.pn@ucu.edu.ua"
+sender_email    = "kornatskyy.pn@ucu.edu.ua"
+alert_email     = "kornatskyy.pn@ucu.edu.ua"
+
+# AI Agenda Parser Configuration
+parser_model    = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+allowed_origins = "*"
+
+# Backend Networking & Database (Supplied by CI or backend outputs in production)
+image_uri         = "277206319329.dkr.ecr.us-east-1.amazonaws.com/new-project-backend:latest"
+vpc_id            = ""
+subnet_ids        = []
+security_group_id = ""
+route_table_id    = ""
+database_url      = ""

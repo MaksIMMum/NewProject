@@ -43,6 +43,25 @@ make dev-backend    # Postgres in Docker, API on :8000 with reload
 make dev-frontend   # Vite on :5173, proxies /api to :8000
 ```
 
+## Infrastructure as Code (Terraform & HCP Terraform)
+
+The project's authentication, background reporting, and AI parsing infrastructure has been migrated from CloudFormation to **Terraform** managed via **HCP Terraform** (organization `ooad-MaksIMMum` / workspace `new-project-dev`) using dynamic AWS IAM OIDC credentials. See [docs/adr/0007-terraform.md](docs/adr/0007-terraform.md) for architectural details.
+
+- **`infra/auth.tf`**: Cognito User Pool, Hosted UI domain, Google Identity Provider, and Managed Login v2 branding.
+- **`infra/reports.tf`**: S3 reports bucket, SQS queue & DLQ, EventBridge scheduler, and report builder/mailer Lambdas.
+- **`infra/ai.tf`**: Agenda parser Lambda on Amazon Bedrock (Claude Haiku 4.5), Lambda Function URL with CORS, and AWS Budgets alarm.
+- **`infra/bootstrap/`**: Bootstrap module establishing the AWS IAM OIDC Provider for HCP Terraform (`https://app.terraform.io`) and execution role (`hcp-terraform-ooad-MaksIMMum`).
+
+### Infrastructure Commands
+
+```sh
+make infra-fmt       # Format Terraform configuration files
+make infra-validate  # Validate Terraform syntax and provider schemas
+make infra-plan      # Run speculative terraform plan via HCP Terraform
+```
+
+All infrastructure changes are previewed via speculative plans in GitHub pull requests and applied automatically by HCP Terraform upon merge to `main`. No direct `terraform apply` is executed from local machines.
+
 ## Deploy to AWS
 
 Everything is described with CloudFormation in [`infra/`](infra/) and deployed to `us-east-1` by default (`AWS_REGION` in `.env`):
